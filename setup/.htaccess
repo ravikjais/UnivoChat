@@ -1,0 +1,3 @@
+# Allow access for installation
+# DELETE this entire /setup folder after running install.php
+Options -Indexes

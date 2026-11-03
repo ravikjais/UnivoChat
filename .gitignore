@@ -1,0 +1,17 @@
+# Secrets and machine-specific settings
+/config/config.local.php
+/config/.appkey
+
+# Local tooling and temporary scripts
+/.claude/
+/_diag.php
+
+# Old copies and database dumps with real data
+/backup/
+/sql/*
+!/sql/univochat_schema.sql
+
+# User uploads
+/uploads/avatars/*
+/uploads/media/*
+!/uploads/media/.htaccess

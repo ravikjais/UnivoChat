@@ -1,0 +1,7 @@
+# Prevent PHP execution in uploads directory
+<FilesMatch "\.(php|php\d|phtml|phar|cgi|pl|py|sh|asp|aspx|jsp)$">
+    Require all denied
+</FilesMatch>
+
+# Allow image/file access only
+Options -Indexes -ExecCGI

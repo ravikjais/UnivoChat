@@ -1,0 +1,136 @@
+# UnivoChat – Apache configuration
+Options -Indexes
+DirectoryIndex index.php
+
+# Force UTF-8
+AddDefaultCharset UTF-8
+
+# Security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    # The camera and the microphone are granted to this origin only: the app
+    # captures photos and records voice notes itself, and nothing it embeds has
+    # any business asking. Removing `self` here silently breaks both features —
+    # the browser refuses getUserMedia before any permission prompt appears.
+    Header set Permissions-Policy "geolocation=(), microphone=(self), camera=(self)"
+
+    # The service worker must never be served from a stale cache, otherwise an
+    # old worker keeps controlling the app after a deploy.
+    <FilesMatch "sw\.js$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# Upload limits
+# PHP refuses an over-sized request before any application code runs, so the
+# 50 MB ceiling in config/config.php only means anything if these agree with it.
+# post_max_size has to clear it with room to spare: a multipart body carries the
+# file *plus* its part headers, the CSRF token and the recipient id.
+#
+# This block is for servers running PHP as an Apache module (XAMPP locally). A
+# host running it as FastCGI/FPM/LiteSpeed ignores php_value entirely — and
+# errors on it if the guard is missing — which is what .user.ini beside this
+# file is for. Both are present on purpose; whichever one the host understands
+# is the one that takes effect.
+<IfModule php_module>
+    php_value upload_max_filesize 52M
+    php_value post_max_size       56M
+    # A 50 MB upload over a slow connection takes longer than the default 60s
+    # to arrive. This is the clock on *receiving* the request, not on running
+    # it, and leaving it short is how a large attachment fails for exactly the
+    # people whose connection made them want the progress bar.
+    php_value max_input_time      300
+    php_value max_execution_time  300
+</IfModule>
+<IfModule mod_php.c>
+    php_value upload_max_filesize 52M
+    php_value post_max_size       56M
+    php_value max_input_time      300
+    php_value max_execution_time  300
+</IfModule>
+
+# Correct MIME types
+<IfModule mod_mime.c>
+    AddType application/manifest+json  .webmanifest
+    AddType image/svg+xml              .svg
+    AddType text/javascript            .js
+</IfModule>
+
+<IfModule mod_headers.c>
+    <FilesMatch "^manifest\.json$">
+        Header set Content-Type "application/manifest+json"
+    </FilesMatch>
+</IfModule>
+
+# Compression. app.js and style.css are ~410 KB together and ~90 KB gzipped,
+# which on a 2G/3G line is the difference between seconds and most of a minute.
+# Brotli where the server has it, gzip otherwise. JSON from PHP is compressed by
+# send_json() in config/config.php, and both filters leave a body alone once it
+# already carries a Content-Encoding.
+<IfModule mod_filter.c>
+    <IfModule mod_brotli.c>
+        AddOutputFilterByType BROTLI_COMPRESS text/html text/css text/plain text/javascript application/javascript application/json application/manifest+json image/svg+xml
+    </IfModule>
+    <IfModule !mod_brotli.c>
+        <IfModule mod_deflate.c>
+            AddOutputFilterByType DEFLATE text/html text/css text/plain text/javascript application/javascript application/json application/manifest+json image/svg+xml
+        </IfModule>
+    </IfModule>
+</IfModule>
+
+# Cache static assets (PHP responses stay uncached)
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/png     "access plus 7 days"
+    ExpiresByType image/svg+xml "access plus 7 days"
+    ExpiresByType text/css      "access plus 1 day"
+    ExpiresByType text/javascript "access plus 1 day"
+    ExpiresByType application/javascript "access plus 1 day"
+</IfModule>
+
+# A stylesheet or script requested with ?v= is a specific build — asset_url()
+# in config/config.php changes the value whenever the file does — so it can be
+# cached for a year and never revalidated. Unversioned requests keep the short
+# lifetime above.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{QUERY_STRING} (^|&)v=
+    RewriteRule \.(css|js)$ - [E=UNI_VERSIONED:1]
+</IfModule>
+<IfModule mod_headers.c>
+    Header set Cache-Control "public, max-age=31536000, immutable" env=UNI_VERSIONED
+    Header unset Expires env=UNI_VERSIONED
+</IfModule>
+
+# Block direct access to internal folders (config/, includes/ and vendor/ also
+# carry their own .htaccess in case mod_rewrite is unavailable)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^config/    - [F,L]
+    RewriteRule ^includes/  - [F,L]
+    RewriteRule ^vendor/    - [F,L]
+</IfModule>
+
+# Composer's own files describe the dependency tree; nothing serves them.
+<FilesMatch "^composer\.(json|lock)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Never expose dotfiles or SQL dumps
+<FilesMatch "^\.|\.(sql|log|ini|md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
